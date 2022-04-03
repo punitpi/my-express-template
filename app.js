@@ -1,4 +1,6 @@
 const express = require('express')
+const compression = require('compression')
+const createError = require('http-errors')
 const path = require('path')
 const cookieParser = require('cookie-parser')
 const helmet = require('helmet')
@@ -11,6 +13,7 @@ const usersRouter = require('./routes/users')
 
 const app = express()
 
+app.use(compression())
 app.use(logger('dev'))
 app.use(helmet())
 app.use(cors())
@@ -24,9 +27,7 @@ app.use('/users', usersRouter)
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
-  res.status(404)
-  const error = new Error(`Page Not Found - ${req.originalUrl}`)
-  next(error)
+  next(createError(404))
 })
 
 // error handler

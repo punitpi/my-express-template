@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+.vscode
+.env
+.env.sample
+package.json
+package-lock.json
+dockerfile

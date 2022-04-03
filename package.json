@@ -5,12 +5,15 @@
   "private": true,
   "author": "Puneeth Prakash",
   "scripts": {
-    "start": "nodemon app.local.js --trace-warnings",
-    "startnode": "node app.local.js",
-    "lint": "eslint './**'",
-    "lintfix": "standard --fix & eslint './**' --fix"
+    "build-dev": "npm i",
+    "build-prod": "npm ci --only=production",
+    "dev": "nodemon app.local.js --trace-warning",
+    "start": "node ./bin/www",
+    "lint": "standard ./*.js",
+    "lint-fix": "standard ./*.js --fix"
   },
   "dependencies": {
+    "compression": "^1.7.4",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.5",
     "debug": "~2.6.9",
@@ -21,7 +24,6 @@
     "morgan": "~1.9.1"
   },
   "devDependencies": {
-    "eslint": "^7.18.0",
     "nodemon": "^2.0.15",
     "standard": "^16.0.4"
   }

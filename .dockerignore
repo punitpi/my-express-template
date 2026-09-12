@@ -6,3 +6,7 @@ npm-debug.log
 package.json
 package-lock.json
 dockerfile
+prisma/dev.db
+prisma/dev.db-journal
+prisma/test.db
+node_modules

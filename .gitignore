@@ -1,3 +1,9 @@
+# Git worktrees (local scratch, used for isolated task execution)
+.worktrees/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/
+
 # Logs
 logs
 *.log

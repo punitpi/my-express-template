@@ -239,10 +239,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     hookTimeout: 20000,
-    testTimeout: 20000
+    testTimeout: 20000,
+    fileParallelism: false
   }
 })
 ```
+
+(`fileParallelism: false` was not in the original draft — added post-execution once Task 6 added a second integration test file. Every test file's `beforeEach` calls `resetDb()`, which deletes ALL rows globally with no per-file scoping; Vitest runs test files in parallel by default, so two files' workers can interleave their `resetDb()` calls against the single shared SQLite database, wiping data mid-test in a sibling file. Confirmed empirically: `npx vitest run --no-file-parallelism` (the CLI equivalent of this config flag) fixed a real, reproducible 4-test failure in `test/users.test.js` when run as part of the full suite. With files serialized, each file owns the database for the duration of its own run and `resetDb()`'s global-delete approach is safe. This setting must also be present in Task 8 Step 4's `vitest.config.js` rewrite — it is not optional infrastructure, it's what keeps the growing test suite correct as more files are added in Tasks 7-8.)
 
 - [ ] **Step 9: Write the Prisma schema**
 
@@ -1869,10 +1872,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     hookTimeout: 20000,
-    testTimeout: 20000
+    testTimeout: 20000,
+    fileParallelism: false
   }
 })
 ```
+
+(`fileParallelism: false` must be preserved from Task 1 Step 8's config — see that step's note for why. This full rewrite replaces the whole file, so the flag has to be carried forward explicitly here or it silently disappears and the test suite becomes flaky again as of this task.)
 
 Run: `npm test` (no inline env vars needed anymore)
 Expected: all tests PASS.

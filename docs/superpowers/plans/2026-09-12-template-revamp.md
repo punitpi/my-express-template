@@ -479,20 +479,28 @@ import { AppError } from '../lib/errors.js'
 export default function errorMiddleware (err, req, res, next) {
   const isAppError = err instanceof AppError
   const statusCode = isAppError ? err.statusCode : 500
+  const isProduction = env.NODE_ENV === 'production'
+  const showDebugInfo = statusCode < 500 || !isProduction
 
   if (statusCode >= 500) {
     logger.error({ err }, 'Unhandled error')
   }
 
+  const message = statusCode >= 500 && isProduction && !isAppError
+    ? 'Internal Server Error'
+    : (err.message || 'Internal Server Error')
+
   res.status(statusCode).json({
     error: {
-      message: err.message || 'Internal Server Error',
-      ...(isAppError && err.details ? { details: err.details } : {}),
-      ...(statusCode >= 500 && env.NODE_ENV !== 'production' ? { stack: err.stack } : {})
+      message,
+      ...(isAppError && err.details && showDebugInfo ? { details: err.details } : {}),
+      ...(statusCode >= 500 && !isProduction ? { stack: err.stack } : {})
     }
   })
 }
 ```
+
+(Amended post-execution: a task reviewer found that `err.message` leaked internal details from non-AppError exceptions unconditionally, and `.details` on a 5xx AppError wasn't gated by NODE_ENV the way `.stack` was. The code above reflects the fix actually applied and merged — see `src/middlewares/error.middleware.js` — not the plan's original draft.)
 
 - [ ] **Step 5: Implement the 404 middleware**
 
@@ -666,7 +674,7 @@ export function signAccessToken (payload) {
 }
 
 export function verifyAccessToken (token) {
-  return jwt.verify(token, env.JWT_ACCESS_SECRET)
+  return jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] })
 }
 
 export function signRefreshToken (payload) {
@@ -674,9 +682,11 @@ export function signRefreshToken (payload) {
 }
 
 export function verifyRefreshToken (token) {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET)
+  return jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] })
 }
 ```
+
+(Amended post-execution: a task reviewer found `jwt.verify()` had no explicit algorithm allowlist — safe by default with a string secret, but a latent widening risk if the secret type ever changes. Both verify calls above reflect the fix actually applied and merged — see `src/lib/jwt.js`.)
 
 - [ ] **Step 9: Run test to verify it passes**
 
@@ -763,12 +773,27 @@ export default function validate (schemas) {
       if (!result.success) {
         return next(new ValidationError('Invalid request', result.error.flatten()))
       }
-      req[key] = result.data
+
+      if (key === 'query') {
+        // Express 5 defines req.query as a getter-only accessor on the
+        // shared request prototype, so plain assignment throws in strict
+        // mode (ESM). Shadow it with an own, writable property instead.
+        Object.defineProperty(req, 'query', {
+          value: result.data,
+          writable: true,
+          configurable: true,
+          enumerable: true
+        })
+      } else {
+        req[key] = result.data
+      }
     }
     next()
   }
 }
 ```
+
+(Amended post-execution: a task reviewer found that plain assignment to `req.query` throws under Express 5's getter-only accessor in this repo's strict-mode ESM — a Critical bug reproduced empirically. The code above reflects the fix actually applied and merged — see `src/middlewares/validate.middleware.js` — not the plan's original draft, which used plain `req[key] = result.data` for all three keys unconditionally.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -832,6 +857,7 @@ Run: `npm install argon2@^0.45.1`
 
 Create `src/modules/auth/auth.service.js`:
 ```js
+import crypto from 'node:crypto'
 import argon2 from 'argon2'
 import prisma from '../../lib/prisma.js'
 import env from '../../lib/env.js'
@@ -857,7 +883,12 @@ function refreshExpiryDate () {
 
 async function issueTokens (user) {
   const accessToken = signAccessToken({ sub: user.id, email: user.email })
-  const refreshToken = signRefreshToken({ sub: user.id })
+  // jti guarantees uniqueness even if two tokens are issued for the same
+  // user within the same second — without it, signRefreshToken({ sub })
+  // is deterministic (HS256, second-granularity iat), so two same-second
+  // logins would produce byte-identical tokens and collide on the
+  // tokenHash unique constraint below.
+  const refreshToken = signRefreshToken({ sub: user.id, jti: crypto.randomUUID() })
 
   await prisma.refreshToken.create({
     data: {
@@ -909,7 +940,13 @@ async function refresh (refreshToken) {
   const user = await prisma.user.findUnique({ where: { id: payload.sub } })
   if (!user) throw new UnauthorizedError('Invalid or expired refresh token')
 
-  await prisma.refreshToken.delete({ where: { id: stored.id } })
+  // deleteMany + count check (rather than delete-by-id) makes this
+  // atomic against a concurrent refresh using the same token: if two
+  // requests both pass the checks above and race to consume the same
+  // row, only one delete can affect a row (id is unique), so the loser
+  // sees count 0 and is correctly rejected instead of also succeeding.
+  const { count } = await prisma.refreshToken.deleteMany({ where: { id: stored.id } })
+  if (count === 0) throw new UnauthorizedError('Invalid or expired refresh token')
 
   return issueTokens(user)
 }
@@ -922,6 +959,8 @@ async function logout (refreshToken) {
 
 export default { register, login, refresh, logout }
 ```
+
+(Amended post-execution: the original draft's `signRefreshToken({ sub: user.id })` was deterministic under HS256 with second-granularity `iat`, so two logins for the same user within the same second produced byte-identical refresh tokens and collided on `tokenHash`'s unique constraint — an implementer found this empirically while implementing Task 5. Fixed by adding a `jti` (JWT ID) claim via `crypto.randomUUID()`, verified nothing else in the codebase reads any refresh-token payload field besides `sub`, so this is a safe addition. Separately, `refresh()`'s original `findUnique` → check → `delete-by-id` was non-transactional, so two concurrent refresh requests using the same token could both pass validation before either deleted the row. Changed to `deleteMany` + count check, which is atomic — empirically verified via two genuinely concurrent `deleteMany` calls against the same row, confirming exactly one succeeds. Both fixes reflect what was actually applied and merged — see `src/modules/auth/auth.service.js`.)
 
 Note: `verifyTokenHash` is not needed here — the refresh lookup uses `hashToken` directly as a unique-index lookup key (see `refresh()` below), which is equivalent to a compare-and-verify and avoids a full-table scan. `verifyTokenHash` remains exported from `src/lib/crypto.js` for symmetry with `hashToken` and is exercised directly by `test/crypto.test.js`, even though no other module calls it.
 

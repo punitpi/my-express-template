@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import argon2 from 'argon2'
 import prisma from '../../lib/prisma.js'
 import env from '../../lib/env.js'
@@ -23,7 +24,12 @@ function refreshExpiryDate () {
 
 async function issueTokens (user) {
   const accessToken = signAccessToken({ sub: user.id, email: user.email })
-  const refreshToken = signRefreshToken({ sub: user.id })
+  // jti guarantees uniqueness even if two tokens are issued for the same
+  // user within the same second — without it, signRefreshToken({ sub })
+  // is deterministic (HS256, second-granularity iat), so two same-second
+  // logins would produce byte-identical tokens and collide on the
+  // tokenHash unique constraint below.
+  const refreshToken = signRefreshToken({ sub: user.id, jti: crypto.randomUUID() })
 
   await prisma.refreshToken.create({
     data: {
@@ -37,12 +43,14 @@ async function issueTokens (user) {
 }
 
 async function register ({ email, password }) {
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing) throw new ConflictError('Email already registered')
-
   const passwordHash = await argon2.hash(password)
-  const user = await prisma.user.create({ data: { email, passwordHash } })
-  return toPublicUser(user)
+  try {
+    const user = await prisma.user.create({ data: { email, passwordHash } })
+    return toPublicUser(user)
+  } catch (err) {
+    if (err.code === 'P2002') throw new ConflictError('Email already registered')
+    throw err
+  }
 }
 
 async function login ({ email, password }) {
@@ -75,7 +83,13 @@ async function refresh (refreshToken) {
   const user = await prisma.user.findUnique({ where: { id: payload.sub } })
   if (!user) throw new UnauthorizedError('Invalid or expired refresh token')
 
-  await prisma.refreshToken.delete({ where: { id: stored.id } })
+  // deleteMany + count check (rather than delete-by-id) makes this
+  // atomic against a concurrent refresh using the same token: if two
+  // requests both pass the checks above and race to consume the same
+  // row, only one delete can affect a row (id is unique), so the loser
+  // sees count 0 and is correctly rejected instead of also succeeding.
+  const { count } = await prisma.refreshToken.deleteMany({ where: { id: stored.id } })
+  if (count === 0) throw new UnauthorizedError('Invalid or expired refresh token')
 
   return issueTokens(user)
 }

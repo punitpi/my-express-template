@@ -902,12 +902,14 @@ async function issueTokens (user) {
 }
 
 async function register ({ email, password }) {
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing) throw new ConflictError('Email already registered')
-
   const passwordHash = await argon2.hash(password)
-  const user = await prisma.user.create({ data: { email, passwordHash } })
-  return toPublicUser(user)
+  try {
+    const user = await prisma.user.create({ data: { email, passwordHash } })
+    return toPublicUser(user)
+  } catch (err) {
+    if (err.code === 'P2002') throw new ConflictError('Email already registered')
+    throw err
+  }
 }
 
 async function login ({ email, password }) {
@@ -960,7 +962,15 @@ async function logout (refreshToken) {
 export default { register, login, refresh, logout }
 ```
 
-(Amended post-execution: the original draft's `signRefreshToken({ sub: user.id })` was deterministic under HS256 with second-granularity `iat`, so two logins for the same user within the same second produced byte-identical refresh tokens and collided on `tokenHash`'s unique constraint — an implementer found this empirically while implementing Task 5. Fixed by adding a `jti` (JWT ID) claim via `crypto.randomUUID()`, verified nothing else in the codebase reads any refresh-token payload field besides `sub`, so this is a safe addition. Separately, `refresh()`'s original `findUnique` → check → `delete-by-id` was non-transactional, so two concurrent refresh requests using the same token could both pass validation before either deleted the row. Changed to `deleteMany` + count check, which is atomic — empirically verified via two genuinely concurrent `deleteMany` calls against the same row, confirming exactly one succeeds. Both fixes reflect what was actually applied and merged — see `src/modules/auth/auth.service.js`.)
+(Amended post-execution — three related issues found by a task reviewer's security-focused pass:
+
+1. The original draft's `signRefreshToken({ sub: user.id })` was deterministic under HS256 with second-granularity `iat`. This isn't only a concurrency edge case: a *single, non-concurrent* refresh call landing in the same wall-clock second as the token's issuance silently returned the identical token — a real break of the stated rotation guarantee ("old token invalidated on use"), reproducible deterministically (login, then immediately refresh, assert the returned token differs — no timing luck required). It also meant two same-second logins collided on `tokenHash`'s unique constraint (P2002 → unhandled 500). Fixed by adding a `jti` (JWT ID) claim via `crypto.randomUUID()` to `signRefreshToken`'s payload — verified nothing else in the codebase reads any refresh-token payload field besides `sub`, so this is a safe, non-breaking addition.
+
+2. `refresh()`'s original `findUnique` → check → `delete-by-id` was non-transactional: two concurrent refresh requests using the same token could both pass validation before either deleted the row, and the loser would throw an unhandled Prisma P2025 (record not found) rather than a clean 401. Changed to `deleteMany` + count check, which is atomic — empirically verified via two genuinely concurrent `deleteMany` calls against the same row in a real test DB: exactly one returned `count: 1`, the other `count: 0`. The zero-count branch now throws a clean `UnauthorizedError`, eliminating the P2025 case entirely (not caught — made unreachable).
+
+3. `register()`'s original `findUnique` → check → `create` was the same read-then-write race on `User.email`'s unique constraint: two concurrent registrations for the same email both pass the existence check, then the second `create()` throws P2002 → unhandled 500 instead of the intended 409. Fixed by dropping the pre-check and catching P2002 directly on `create()` instead — the unique constraint itself is the authoritative check, so a separate `findUnique` added no correctness, just a race window. (Note: `issueTokens`'s own `RefreshToken.tokenHash` unique constraint does not need equivalent P2002 handling — once `jti` is a random UUID, two refresh tokens for the same user can no longer collide, so that failure mode is now unreachable, not merely caught.)
+
+All three fixes reflect what was actually applied and merged — see `src/modules/auth/auth.service.js`.)
 
 Note: `verifyTokenHash` is not needed here — the refresh lookup uses `hashToken` directly as a unique-index lookup key (see `refresh()` below), which is equivalent to a compare-and-verify and avoids a full-table scan. `verifyTokenHash` remains exported from `src/lib/crypto.js` for symmetry with `hashToken` and is exercised directly by `test/crypto.test.js`, even though no other module calls it.
 

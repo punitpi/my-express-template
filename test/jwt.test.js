@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
+import jsonwebtoken from 'jsonwebtoken'
 
 describe('jwt', () => {
   let signAccessToken, verifyAccessToken, signRefreshToken, verifyRefreshToken
@@ -35,5 +36,10 @@ describe('jwt', () => {
   it('rejects a tampered token', () => {
     const token = signAccessToken({ sub: 'user-1' })
     expect(() => verifyAccessToken(token + 'x')).toThrow()
+  })
+
+  it('rejects a token signed with a different algorithm', () => {
+    const token = jsonwebtoken.sign({ sub: 'user-1' }, process.env.JWT_ACCESS_SECRET, { algorithm: 'HS384' })
+    expect(() => verifyAccessToken(token)).toThrow(/invalid algorithm/)
   })
 })

@@ -25,10 +25,16 @@ and Swagger/OpenAPI docs.
 ```bash
 npm install
 cp .env.sample .env
+cp .env.sample .env.test
 ```
 
 Edit `.env` and set `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` to long
 random strings (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+
+Edit `.env.test` the same way, and also change `NODE_ENV` to `test` and
+`DATABASE_URL` to a separate file, e.g. `DATABASE_URL="file:./test.db"` — this
+keeps the test suite (which resets the database between test files) from
+ever touching your dev database.
 
 Run the first database migration:
 ```bash
@@ -58,8 +64,9 @@ at `http://localhost:3000/docs`.
 
 ## Environment variables
 
-See `.env.sample`. `src/lib/env.js` validates these at boot and the process
-exits immediately with a clear error if anything required is missing.
+See `.env.sample`. `src/lib/env.js` validates these at boot and throws an
+uncaught error — terminating the process with a non-zero exit code — if
+anything required is missing or malformed.
 
 ## API overview
 
@@ -75,7 +82,7 @@ Full request/response schemas: `/docs`.
 ## Testing
 
 Tests run against a dedicated SQLite database (`.env.test`, gitignored,
-already created during setup — see below), reset between test files via
+created during "Getting started" above), reset between test files via
 `test/setup.js`.
 
 ```bash

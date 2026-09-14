@@ -1395,11 +1395,13 @@ async function getById (id) {
 }
 
 async function updateEmail (id, email) {
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing && existing.id !== id) throw new ConflictError('Email already in use')
-
-  const user = await prisma.user.update({ where: { id }, data: { email } })
-  return toPublicUser(user)
+  try {
+    const user = await prisma.user.update({ where: { id }, data: { email } })
+    return toPublicUser(user)
+  } catch (err) {
+    if (err.code === 'P2002') throw new ConflictError('Email already in use')
+    throw err
+  }
 }
 
 async function remove (id) {
@@ -1408,6 +1410,8 @@ async function remove (id) {
 
 export default { getById, updateEmail, remove }
 ```
+
+(Amended post-execution: the original draft's `updateEmail` had the same findUnique-then-write race already fixed once in `register()` — two concurrent PATCH requests setting the same not-yet-taken email could both pass the pre-check before either commits, and the loser's uncaught P2002 from `update()` would propagate past `errorMiddleware`'s AppError-only status mapping as an unhandled 500 instead of the intended 409. Fixed the same way as `register()`: drop the pre-check, catch P2002 directly on the write. See `src/modules/users/users.service.js`.)
 
 - [ ] **Step 3: Implement the users controller**
 

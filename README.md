@@ -1,80 +1,94 @@
-# Express API Starter Template Project
+# Express API Starter Template
 
-## Dependencies:
+An opinionated Express 5 API starter: JWT auth with DB-tracked refresh-token
+revocation, SQLite via Prisma, Zod request validation, structured logging,
+and Swagger/OpenAPI docs.
 
-- [compression](https://www.npmjs.com/package/compression)
-  - Returns the compression middleware using the given options. The middleware will attempt to compress response bodies for all request that traverse through the middleware
-- [cookie-parser](https://www.npmjs.com/package/cookie-parser)
-  - Parse Cookie header and populate req.cookies with an object keyed by the cookie names. Optionally you may enable signed cookie support by passing a secret string, which assigns req.secret so it may be used by other middleware.
-- [cors](https://www.npmjs.com/package/cors)
-  - CORS is a node.js package for providing a Connect/Express middleware that can be used to enable CORS with various options
-- [debug](https://www.npmjs.com/package/debug)
-  - A tiny JavaScript debugging utility modelled after Node.js core's debugging technique. Works in Node.js and web browsers
-- [dotenv](https://www.npmjs.com/package/dotenv)
-  - Dotenv is a zero-dependency module that loads environment variables from a `.env` file into `process.env`
-- [express](https://www.npmjs.com/package/express)
-  - Small, robust tooling for HTTP servers
-- [helmet](https://www.npmjs.com/package/helmet)
-  - Helmet helps you secure your Express apps by setting various HTTP headers. It's not a silver bullet, but it can help!
-- [http-errors](https://www.npmjs.com/package/http-errors)
-  - Create HTTP errors for Express, Koa, Connect, etc. with ease
-- [morgan](https://www.npmjs.com/package/morgan)
-  - HTTP request logger middleware for node.js
+## Stack
 
-## Development Dependencies:
+- **Express 5** — HTTP framework
+- **Prisma + SQLite** — ORM and database (swap the `datasource` in
+  `prisma/schema.prisma` to point at Postgres/MySQL later if needed)
+- **JWT (jsonwebtoken)** — short-lived access tokens + long-lived refresh
+  tokens (httpOnly cookie), refresh tokens are hashed and tracked in the DB
+  so logout actually revokes them
+- **argon2** — password hashing
+- **Zod** — request body/params/query validation, and environment variable
+  validation at boot
+- **pino / pino-http** — structured JSON logging
+- **swagger-jsdoc + swagger-ui-express** — API docs generated from JSDoc
+  comments above each route, served at `/docs`
+- **Vitest + Supertest** — integration test suite
 
-- [nodemon](https://www.npmjs.com/package/nodemon)
-  - nodemon is a tool that helps develop node.js based applications by automatically restarting the node application when file changes in the directory are detected.
-- [standard](https://www.npmjs.com/package/standard)
+## Getting started
 
-  - Standard JS is detailed as "A JavaScript Standard Style". It is a Style guide, with linter & automatic code fixer. It is a way to enforce consistent style in your project. It automatically formats code.
+```bash
+npm install
+cp .env.sample .env
+```
+
+Edit `.env` and set `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` to long
+random strings (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+
+Run the first database migration:
+```bash
+npm run db:migrate
+```
+
+Start the dev server:
+```bash
+npm run dev
+```
+
+The API is now running at `http://localhost:3000`, with interactive docs
+at `http://localhost:3000/docs`.
 
 ## Scripts
 
-### build-dev
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Run the server with file-watch auto-restart |
+| `npm start` | Run the server (production) |
+| `npm test` | Run the test suite once |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run lint` / `lint-fix` | Standard JS lint / autofix |
+| `npm run db:migrate` | Create and apply a new Prisma migration (dev) |
+| `npm run db:migrate:deploy` | Apply existing migrations (production) |
+| `npm run db:studio` | Open Prisma Studio, a GUI for the database |
 
-Installs all the dependencies
+## Environment variables
 
-```
-npm i
-```
+See `.env.sample`. `src/lib/env.js` validates these at boot and the process
+exits immediately with a clear error if anything required is missing.
 
-### build-prod
+## API overview
 
-Installs all the dependencies for production
+- `POST /auth/register` — create an account
+- `POST /auth/login` — get an access token + refresh cookie
+- `POST /auth/refresh` — exchange the refresh cookie for a new access token
+- `POST /auth/logout` — revoke the current refresh token
+- `GET /users/me`, `PATCH /users/me`, `DELETE /users/me` — manage the
+  authenticated user's own profile (`Authorization: Bearer <accessToken>`)
 
-```
-npm ci --only=production
-```
+Full request/response schemas: `/docs`.
 
-### dev
+## Testing
 
-Run the project using nodemon
+Tests run against a dedicated SQLite database (`.env.test`, gitignored,
+already created during setup — see below), reset between test files via
+`test/setup.js`.
 
-```
-nodemon app.local.js --trace-warnings
-```
-
-### start
-
-Run the project using node
-
-```
-node ./bin/www
-```
-
-### lint
-
-Runs Standard JS Lint
-
-```
-standard './*.js'
+```bash
+npm test
 ```
 
-### lintfix
+## Docker
 
-Run Standard JS lint and fix the issues
-
-```
-standard ./*.js --fix
+```bash
+docker build -t my-express-template .
+docker run -p 3000:3000 \
+  -e DATABASE_URL="file:./prod.db" \
+  -e JWT_ACCESS_SECRET=... \
+  -e JWT_REFRESH_SECRET=... \
+  my-express-template
 ```

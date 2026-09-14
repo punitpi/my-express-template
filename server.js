@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import app from './src/app.js'
 import env from './src/lib/env.js'
 import logger from './src/lib/logger.js'

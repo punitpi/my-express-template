@@ -6,8 +6,8 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('30d')
+  JWT_ACCESS_EXPIRES_IN: z.string().regex(/^\d+[smhd]$/, 'must be like 15m, 1h, 30d').default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().regex(/^\d+[smhd]$/, 'must be like 15m, 1h, 30d').default('30d')
 })
 
 const parsed = schema.safeParse(process.env)

@@ -56,6 +56,29 @@ describe('errorMiddleware', () => {
     expect(res.statusCode).toBe(500)
     expect(res.body.error.message).toBe('unexpected')
   })
+
+  it('honors a 400 status from a non-AppError (e.g. express.json SyntaxError)', () => {
+    const err = Object.assign(new SyntaxError('Unexpected token b in JSON'), {
+      status: 400,
+      statusCode: 400,
+      type: 'entity.parse.failed'
+    })
+    const res = mockRes()
+    errorMiddleware(err, {}, res, () => {})
+    expect(res.statusCode).toBe(400)
+    expect(res.body.error.message).toBe('Unexpected token b in JSON')
+  })
+
+  it('honors a 413 status from a non-AppError (e.g. body-size-limit error)', () => {
+    const err = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      type: 'entity.too.large'
+    })
+    const res = mockRes()
+    errorMiddleware(err, {}, res, () => {})
+    expect(res.statusCode).toBe(413)
+  })
 })
 
 describe('errorMiddleware env-dependent behavior', () => {

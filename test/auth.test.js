@@ -42,6 +42,21 @@ describe('POST /auth/register', () => {
     const res = await request(app).post('/auth/register').send({ email: 'short@example.com', password: '123' })
     expect(res.status).toBe(400)
   })
+
+  it('rejects malformed JSON with 400, not 500', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .set('Content-Type', 'application/json')
+      .send('{bad json')
+
+    expect(res.status).toBe(400)
+    // validate.middleware.js's ValidationError always says exactly "Invalid
+    // request" with a `details` field; a different message here confirms
+    // this took the body-parser SyntaxError path, not a coincidental 400
+    // from schema validation running on a fallback-parsed body.
+    expect(res.body.error.message).not.toBe('Invalid request')
+    expect(res.body.error.details).toBeUndefined()
+  })
 })
 
 describe('POST /auth/login', () => {

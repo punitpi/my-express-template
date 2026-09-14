@@ -9,14 +9,13 @@ import {
   verifyRefreshToken
 } from '../../lib/jwt.js'
 import { ConflictError, UnauthorizedError } from '../../lib/errors.js'
-
-function toPublicUser (user) {
-  return { id: user.id, email: user.email, createdAt: user.createdAt }
-}
+import { toPublicUser } from '../users/users.serializer.js'
 
 function refreshExpiryDate () {
+  // env.js validates JWT_REFRESH_EXPIRES_IN against this same regex at boot,
+  // so a non-match here can't happen at runtime; kept as a defensive assert.
   const match = /^(\d+)([smhd])$/.exec(env.JWT_REFRESH_EXPIRES_IN)
-  if (!match) return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  if (!match) throw new Error(`Invalid JWT_REFRESH_EXPIRES_IN: ${env.JWT_REFRESH_EXPIRES_IN}`)
   const [, amount, unit] = match
   const ms = { s: 1000, m: 60000, h: 3600000, d: 86400000 }[unit]
   return new Date(Date.now() + Number(amount) * ms)

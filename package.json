@@ -12,7 +12,7 @@
     "build-dev": "npm install",
     "build-prod": "npm ci --omit=dev",
     "dev": "node --watch server.js",
-    "start": "node server.js",
+    "start": "NODE_ENV=production node server.js",
     "lint": "standard src test server.js",
     "lint-fix": "standard src test server.js --fix",
     "test": "vitest run",

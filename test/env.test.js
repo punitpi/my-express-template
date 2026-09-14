@@ -40,4 +40,20 @@ describe('env', () => {
     delete process.env[key]
     await expect(import('../src/lib/env.js')).rejects.toThrow()
   })
+
+  it.each(['2w', '1y', '7 days', '604800', 'abc'])(
+    'throws when JWT_REFRESH_EXPIRES_IN is %s (outside the \\d+[smhd] grammar)',
+    async (value) => {
+      vi.resetModules()
+      process.env.JWT_REFRESH_EXPIRES_IN = value
+      await expect(import('../src/lib/env.js')).rejects.toThrow()
+    }
+  )
+
+  it('accepts a valid JWT_REFRESH_EXPIRES_IN like 2d', async () => {
+    vi.resetModules()
+    process.env.JWT_REFRESH_EXPIRES_IN = '2d'
+    const { default: env } = await import('../src/lib/env.js')
+    expect(env.JWT_REFRESH_EXPIRES_IN).toBe('2d')
+  })
 })

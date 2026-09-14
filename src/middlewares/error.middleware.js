@@ -4,7 +4,10 @@ import { AppError } from '../lib/errors.js'
 
 export default function errorMiddleware (err, req, res, next) {
   const isAppError = err instanceof AppError
-  const statusCode = isAppError ? err.statusCode : 500
+  const rawStatus = isAppError ? err.statusCode : (err.status ?? err.statusCode)
+  const statusCode = Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
+    ? rawStatus
+    : 500
   const isProduction = env.NODE_ENV === 'production'
   const showDebugInfo = statusCode < 500 || !isProduction
 

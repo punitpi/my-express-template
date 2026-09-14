@@ -7,6 +7,7 @@ import cors from 'cors'
 import logger from './lib/logger.js'
 import env from './lib/env.js'
 import authRouter from './modules/auth/auth.routes.js'
+import usersRouter from './modules/users/users.routes.js'
 import notFoundMiddleware from './middlewares/notFound.middleware.js'
 import errorMiddleware from './middlewares/error.middleware.js'
 
@@ -26,6 +27,7 @@ app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
 
 app.use('/auth', authRouter)
+app.use('/users', usersRouter)
 
 app.use(notFoundMiddleware)
 app.use(errorMiddleware)

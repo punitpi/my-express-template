@@ -19,6 +19,7 @@ COPY --from=deps /application/node_modules ./node_modules
 COPY --from=build /application/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /application/node_modules/prisma ./node_modules/prisma
 COPY --from=build /application/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /application/node_modules/.bin ./node_modules/.bin
 COPY --chown=node:node . .
 USER node
 EXPOSE 3000

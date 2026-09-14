@@ -7,3 +7,8 @@ npm-debug.log
 prisma/dev.db
 prisma/dev.db-journal
 prisma/test.db
+prisma/test.db-journal
+.git
+.superpowers/
+docs/
+test/

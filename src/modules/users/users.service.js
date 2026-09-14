@@ -1,9 +1,6 @@
 import prisma from '../../lib/prisma.js'
 import { ConflictError, NotFoundError } from '../../lib/errors.js'
-
-function toPublicUser (user) {
-  return { id: user.id, email: user.email, createdAt: user.createdAt, updatedAt: user.updatedAt }
-}
+import { toPublicUser } from './users.serializer.js'
 
 async function getById (id) {
   const user = await prisma.user.findUnique({ where: { id } })

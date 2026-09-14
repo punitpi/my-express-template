@@ -23,4 +23,4 @@ COPY --from=build /application/node_modules/.bin ./node_modules/.bin
 COPY --chown=node:node . .
 USER node
 EXPOSE 3000
-CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && exec node server.js"]

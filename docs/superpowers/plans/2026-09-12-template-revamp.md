@@ -347,6 +347,26 @@ prisma/test.db
 node_modules
 ```
 
+**Amended after Task 8 review (2026-09-14):** the `.dockerignore` that actually
+shipped through Task 7 diverged further and, critically, excluded
+`package.json`, `package-lock.json`, and `dockerfile` themselves — breaking
+every `COPY package.json package-lock.json ./` step in the Dockerfile below.
+Task 8's implementer found this via static review (no Docker runtime was
+available to catch it by an actual failed build) and fixed it. The final,
+correct `.dockerignore` is:
+```
+node_modules
+npm-debug.log
+.vscode
+.env
+.env.test
+.env.sample
+prisma/dev.db
+prisma/dev.db-journal
+prisma/test.db
+```
+(`package.json`, `package-lock.json`, and `dockerfile` are never excluded.)
+
 - [ ] **Step 14: Run full test suite and commit**
 
 Run: `npx vitest run`
@@ -1912,6 +1932,36 @@ COPY --from=deps /application/node_modules ./node_modules
 COPY --from=build /application/node_modules/.prisma ./node_modules/.prisma
 COPY . .
 RUN npx prisma generate
+USER node
+EXPOSE 3000
+CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && node server.js"]
+```
+
+**Amended after Task 8 review (2026-09-14):** the runtime stage above has two
+bugs, both found via static review since no Docker runtime was available in
+this environment to catch them by an actual failed build/run:
+
+1. `RUN npx prisma generate` in the runtime stage re-invokes the Prisma CLI,
+   but `prisma` is a devDependency and the runtime stage's `node_modules`
+   comes from the `deps` stage, which was installed with `--omit=dev` — the
+   CLI binary isn't there, so this line fails. Fix: don't regenerate in the
+   runtime stage at all; copy the CLI package (already used and thus already
+   present) from the `build` stage instead, alongside the already-copied
+   generated `.prisma` client.
+2. `COPY . .` runs before `USER node` with no ownership flag, so all files
+   (including the SQLite database file created at runtime under
+   `prisma/prod.db`) end up owned by root while the process runs as `node` —
+   writes fail. Fix: `--chown=node:node` on that COPY.
+
+The corrected runtime stage:
+```dockerfile
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=deps /application/node_modules ./node_modules
+COPY --from=build /application/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /application/node_modules/prisma ./node_modules/prisma
+COPY --from=build /application/node_modules/@prisma ./node_modules/@prisma
+COPY --chown=node:node . .
 USER node
 EXPOSE 3000
 CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && node server.js"]

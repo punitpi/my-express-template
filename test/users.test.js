@@ -60,6 +60,36 @@ describe('PATCH /users/me', () => {
   })
 })
 
+describe('PATCH /users/me concurrency', () => {
+  it('allows exactly one of two concurrent updates to the same not-yet-taken email to succeed', async () => {
+    const tokenA = await registerAndLogin('userA@example.com')
+    const tokenB = await registerAndLogin('userB@example.com')
+    const email = 'concurrent-target@example.com'
+
+    const [resA, resB] = await Promise.all([
+      request(app).patch('/users/me').set('Authorization', `Bearer ${tokenA}`).send({ email }),
+      request(app).patch('/users/me').set('Authorization', `Bearer ${tokenB}`).send({ email })
+    ])
+
+    expect(resA.status).not.toBe(500)
+    expect(resB.status).not.toBe(500)
+    const statuses = [resA.status, resB.status].sort()
+    expect(statuses).toEqual([200, 409])
+
+    const holders = await prisma.user.findMany({ where: { email } })
+    expect(holders).toHaveLength(1)
+  })
+
+  it('allows setting your own email to its current value (no-op)', async () => {
+    const token = await registerAndLogin('noop@example.com')
+    const res = await request(app)
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ email: 'noop@example.com' })
+    expect(res.status).toBe(200)
+  })
+})
+
 describe('DELETE /users/me', () => {
   it('deletes the current user, subsequent auth then fails', async () => {
     const token = await registerAndLogin()

@@ -12,11 +12,13 @@ async function getById (id) {
 }
 
 async function updateEmail (id, email) {
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing && existing.id !== id) throw new ConflictError('Email already in use')
-
-  const user = await prisma.user.update({ where: { id }, data: { email } })
-  return toPublicUser(user)
+  try {
+    const user = await prisma.user.update({ where: { id }, data: { email } })
+    return toPublicUser(user)
+  } catch (err) {
+    if (err.code === 'P2002') throw new ConflictError('Email already in use')
+    throw err
+  }
 }
 
 async function remove (id) {

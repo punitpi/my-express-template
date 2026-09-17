@@ -1,3 +1,9 @@
+# Git worktrees (local scratch, used for isolated task execution)
+.worktrees/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/
+
 # Logs
 logs
 *.log
@@ -73,6 +79,12 @@ web_modules/
 .env
 .env.test
 .env.production
+
+# Prisma
+/prisma/dev.db
+/prisma/dev.db-journal
+/prisma/test.db
+/prisma/test.db-journal
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
